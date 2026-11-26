@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grafo de recomendação de produtos em C</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b35;--txt:#d7dae0;--sub:#8b93a1;--acc:#7cc4e6;--acc2:#e0a46a;--ok:#7fd39b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
+  main{max-width:900px;margin:0 auto;padding:40px 20px 60px}
+  h1{font-size:30px;margin:0 0 6px;color:#fff}
+  h2{font-size:21px;margin:44px 0 12px;color:var(--acc);border-bottom:1px solid var(--line);padding-bottom:6px}
+  h3{font-size:17px;margin:24px 0 8px;color:#fff}
+  p,li{font-size:16px}
+  .sub{color:var(--sub)}
+  code{font-family:"JetBrains Mono",Consolas,monospace;background:var(--panel);border:1px solid var(--line);padding:1px 5px;border-radius:4px;font-size:.9em;color:var(--acc2)}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;
+      font-family:"JetBrains Mono",Consolas,monospace;font-size:13.5px;line-height:1.5;margin:10px 0 16px;color:var(--txt)}
+  pre .p{color:var(--ok)} pre .in{color:var(--acc2);font-weight:700} pre .c{color:#6b7380}
+  table{border-collapse:collapse;width:100%;font-size:15px;margin:8px 0 16px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left}
+  th{background:var(--panel);color:var(--sub);font-weight:600}
+  details{margin:10px 0}
+  summary{cursor:pointer;color:var(--acc);font-weight:600}
+  a{color:var(--acc)}
+  footer{margin-top:50px;color:var(--sub);font-size:14px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<main>
+
+<h1>Grafo de recomendação de produtos em C</h1>
+<p class="sub">O programa representa clientes e produtos de uma loja como um grafo e procura caminhos nele usando busca em profundidade (DFS) e busca em largura (BFS).</p>
+
+<h2>1. O problema</h2>
+<p>Uma loja online quer sugerir produtos com base no que clientes parecidos compraram. Se dois clientes compraram o mesmo produto, o que um deles comprou a mais pode ser uma boa sugestão para o outro.</p>
+<p>No exemplo há 4 clientes (<code>C1</code>–<code>C4</code>) e 4 produtos (<code>P1</code>–<code>P4</code>). Cada aresta significa "esse cliente comprou esse produto":</p>
+<pre>C1 --- P1 --- C2 --- P3 --- C3 --- P4 --- C4
+|
+P2</pre>
+<p>As arestas são C1-P1, C1-P2, C2-P1, C2-P3, C3-P3, C3-P4 e C4-P4. O grafo é não direcionado e bipartido: toda aresta liga um cliente a um produto.</p>
+
+<h2>2. Como o grafo é guardado</h2>
+<p>Cada vértice vira um índice de 0 a 7, e os nomes ficam num vetor usado só para imprimir. As ligações ficam numa <strong>matriz de adjacência</strong> 8×8: <code>adj[u][v] = 1</code> quando existe aresta entre <code>u</code> e <code>v</code>.</p>
+<pre>#define N 8
+static const char *NOMES[N] = {"C1", "C2", "C3", "C4", "P1", "P2", "P3", "P4"};
+static int adj[N][N];
+
+static void montar_grafo(void) {
+    static const int arestas[][2] = {
+        {0, 4}, {0, 5}, {1, 4}, {1, 6}, {2, 6}, {2, 7}, {3, 7}
+    };
+    for (i = 0; i &lt; sizeof arestas / sizeof arestas[0]; i++) {
+        adj[arestas[i][0]][arestas[i][1]] = 1;
+        adj[arestas[i][1]][arestas[i][0]] = 1;
+    }
+}</pre>
+<p>Como o grafo não é direcionado, cada aresta é marcada duas vezes. A matriz resultante:</p>
+<pre>      C1 C2 C3 C4 P1 P2 P3 P4
+C1  [  0  0  0  0  1  1  0  0 ]
+C2  [  0  0  0  0  1  0  1  0 ]
+C3  [  0  0  0  0  0  0  1  1 ]
+C4  [  0  0  0  0  0  0  0  1 ]
+P1  [  1  1  0  0  0  0  0  0 ]
+P2  [  1  0  0  0  0  0  0  0 ]
+P3  [  0  1  1  0  0  0  0  0 ]
+P4  [  0  0  1  1  0  0  0  0 ]</pre>
+
+<h2>3. Estrutura do programa</h2>
+<table>
+  <tr><th>Função</th><th>O que faz</th></tr>
+  <tr><td><code>main</code></td><td>Monta o grafo e mostra o menu em loop até o usuário escolher 0.</td></tr>
+  <tr><td><code>ler_linha</code></td><td>Lê uma linha com <code>fgets</code> e tira espaços e quebras de linha das pontas.</td></tr>
+  <tr><td><code>indice_vertice</code></td><td>Converte o texto digitado (ex.: <code>c1</code>) para o índice do vértice. Aceita minúsculas e retorna -1 se o nome não existir.</td></tr>
+  <tr><td><code>pedir_busca</code></td><td>Pergunta origem e objetivo. ENTER no objetivo significa "percorrer o grafo inteiro".</td></tr>
+  <tr><td><code>dfs</code> / <code>executar_dfs</code></td><td>Busca em profundidade recursiva, com backtracking.</td></tr>
+  <tr><td><code>executar_bfs</code></td><td>Busca em largura com fila.</td></tr>
+  <tr><td><code>imprimir_relatorio</code></td><td>Mostra o resultado de qualquer uma das buscas no mesmo formato.</td></tr>
+  <tr><td><code>mostrar_lista</code></td><td>Imprime a lista de adjacência a partir da matriz.</td></tr>
+</table>
+<p>As duas buscas guardam o resultado na mesma <code>struct</code>, o que permite usar uma função só para imprimir:</p>
+<pre>typedef struct {
+    int visitado[N];
+    int ordem[N];      /* v na ordem em que foram visitados */
+    int qtd_visitados;
+    int arestas;       /* a para avancar a vertices novos */
+    int caminho[N];    /* caminho origem p/ objetivo */
+    int tam_caminho;
+    int encontrado;
+    int pilha[N];      /* caminho atual da recursao (DFS) */
+    int topo;
+} Busca;</pre>
+
+<h2>4. Busca em profundidade (DFS)</h2>
+<p>A DFS escolhe um vizinho ainda não visitado e segue por ele o mais fundo possível. Quando um ramo termina sem chegar ao objetivo, a função retorna e o laço tenta o próximo vizinho. Esse "voltar e tentar outro" é o <strong>backtracking</strong>.</p>
+<p>A <code>pilha</code> guarda o caminho atual: o vértice entra ao ser visitado e sai (<code>topo--</code>) quando nenhum dos seus vizinhos leva ao objetivo. Quando o objetivo é encontrado, o conteúdo da pilha já é o caminho da origem até ele.</p>
+<pre>static int dfs(int u, int destino, Busca *b) {
+    int v;
+    b-&gt;visitado[u] = 1;
+    b-&gt;ordem[b-&gt;qtd_visitados++] = u;
+    b-&gt;pilha[b-&gt;topo++] = u;
+
+    if (u == destino)
+        return 1;
+
+    for (v = 0; v &lt; N; v++) {
+        if (adj[u][v] &amp;&amp; !b-&gt;visitado[v]) {
+            b-&gt;arestas++;
+            if (dfs(v, destino, b))
+                return 1;
+        }
+    }
+
+    b-&gt;topo--;
+    return 0;
+}</pre>
+
+<h2>5. Busca em largura (BFS)</h2>
+<p>A BFS visita primeiro todos os vizinhos da origem, depois os vizinhos deles, e assim por diante, em camadas. Para isso usa uma <strong>fila</strong> num vetor com dois índices: <code>ini</code> (próximo a sair) e <code>fim</code> (onde entra o próximo).</p>
+<p>Cada vértice descoberto guarda em <code>pai[v]</code> de onde veio. Ao achar o objetivo, o programa segue os pais de trás para frente e depois inverte, obtendo o caminho com menos arestas.</p>
+<pre>while (ini &lt; fim) {
+    u = fila[ini++];
+    b-&gt;ordem[b-&gt;qtd_visitados++] = u;
+
+    if (u == destino) {
+        b-&gt;encontrado = 1;
+        break;
+    }
+
+    for (v = 0; v &lt; N; v++) {
+        if (adj[u][v] &amp;&amp; !b-&gt;visitado[v]) {
+            b-&gt;visitado[v] = 1;
+            pai[v] = u;
+            b-&gt;arestas++;
+            fila[fim++] = v;
+        }
+    }
+}
+
+if (b-&gt;encontrado) {
+    for (x = destino; x != -1; x = pai[x])
+        tmp[k++] = x;
+    b-&gt;tam_caminho = k;
+    for (i = 0; i &lt; k; i++)
+        b-&gt;caminho[i] = tmp[k - 1 - i];
+}</pre>
+
+<h2>6. Build</h2>
+<p>Compilado em C99 com todos os avisos ligados. A compilação termina sem nenhum aviso:</p>
+<pre><span class="p">$</span> gcc --version | head -1
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+<span class="p">$</span> gcc -std=c99 -Wall -Wextra -pedantic -o grafo grafo.c
+<span class="p">$</span> echo $?
+0
+<span class="p">$</span> ls -l grafo
+-rwxrwxr-x 1 user user 21208 grafo</pre>
+
+<h2>7. Execução</h2>
+<h3>Lista de adjacência (opção 3)</h3>
+<pre><span class="p">$</span> ./grafo
+
+========== MENU ==========
+1 - Busca em profundidade (DFS)
+2 - Busca em largura (BFS)
+3 - Mostrar lista de adjacencia
+0 - Sair
+Opcao: <span class="in">3</span>
+
+Lista de adjacencia:
+C1: P1, P2
+C2: P1, P3
+C3: P3, P4
+C4: P4
+P1: C1, C2
+P2: C1
+P3: C2, C3
+P4: C3, C4</pre>
+
+<h3>DFS de C1 até P4 (opção 1)</h3>
+<pre>Opcao: <span class="in">1</span>
+Vertice de origem (ex.: C1): <span class="in">C1</span>
+Vertice objetivo (ENTER = busca completa): <span class="in">P4</span>
+
+===== Busca em profundidade (DFS) =====
+Vertice de origem       : C1
+Vertice objetivo        : P4
+Caminho percorrido      : C1 -&gt; P1 -&gt; C2 -&gt; P3 -&gt; C3 -&gt; P4
+Vertices visitados      : C1, C2, C3, P1, P3, P4
+Quantidade de visitados : 6
+Arestas percorridas     : 5
+Caminho ate o objetivo  : C1 -&gt; P1 -&gt; C2 -&gt; P3 -&gt; C3 -&gt; P4
+Objetivo encontrado     : SIM</pre>
+
+<h3>BFS de C1 até P4 (opção 2)</h3>
+<pre>Opcao: <span class="in">2</span>
+Vertice de origem (ex.: C1): <span class="in">C1</span>
+Vertice objetivo (ENTER = busca completa): <span class="in">P4</span>
+
+===== Busca em largura (BFS) =====
+Vertice de origem       : C1
+Vertice objetivo        : P4
+Caminho percorrido      : C1 -&gt; P1 -&gt; P2 -&gt; C2 -&gt; P3 -&gt; C3 -&gt; P4
+Vertices visitados      : C1, C2, C3, P1, P2, P3, P4
+Quantidade de visitados : 7
+Arestas percorridas     : 6
+Caminho ate o objetivo  : C1 -&gt; P1 -&gt; C2 -&gt; P3 -&gt; C3 -&gt; P4
+Objetivo encontrado     : SIM
+
+========== MENU ==========
+...
+Opcao: <span class="in">0</span>
+Encerrando.</pre>
+
+<h3>O que muda entre as duas</h3>
+<p>As duas chegam ao mesmo caminho, mas por ordens diferentes. A DFS foi direto por P1 e nunca precisou olhar P2. A BFS, antes de avançar, visitou todos os vizinhos de C1, inclusive P2. Por isso ela visitou um vértice e usou uma aresta a mais.</p>
+<table>
+  <tr><th>Busca</th><th>Visitados</th><th>Arestas</th><th>Caminho até P4</th></tr>
+  <tr><td>DFS</td><td>6</td><td>5</td><td>C1 → P1 → C2 → P3 → C3 → P4</td></tr>
+  <tr><td>BFS</td><td>7</td><td>6</td><td>C1 → P1 → C2 → P3 → C3 → P4</td></tr>
+</table>
+<p>No contexto da loja, um caminho como <strong>C1 → P1 → C2 → P3</strong> vira uma sugestão: C1 e C2 compraram P1, e C2 também comprou P3, então P3 pode ser recomendado para C1.</p>
+
+<h2>8. Código-fonte completo</h2>
+<p><a href="grafo.c" download>Baixar grafo.c</a></p>
+<details>
+  <summary>Mostrar o código</summary>
+<pre id="fonte">Carregando grafo.c...</pre>
+</details>
+
+<footer>Compilar: <code>gcc -std=c99 -Wall -Wextra -pedantic -o grafo grafo.c</code> · Executar: <code>./grafo</code></footer>
+</main>
+<script>
+fetch('grafo.c',{cache:'no-store'}).then(r=>r.ok?r.text():Promise.reject()).then(t=>{document.getElementById('fonte').textContent=t})
+  .catch(()=>{document.getElementById('fonte').textContent='Não foi possível carregar o grafo.c. Use o link de download acima.'});
+</script>
+</body>
+</html>

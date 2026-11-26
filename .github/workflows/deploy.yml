@@ -1,0 +1,26 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, vps-particular]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar
+        run: |
+          gcc -std=c99 -Wall -Wextra -pedantic -o grafo grafo.c
+          printf '1\nC1\nP4\n0\n' | ./grafo | grep -q 'Objetivo encontrado     : SIM'
+
+      - name: Publicar na VPS
+        run: |
+          install -m 644 index.html grafo.c "$HOME/grafo-apresentacao/"
+          curl -fsS -o /dev/null http://127.0.0.1:8320/
